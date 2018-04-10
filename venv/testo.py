@@ -11,8 +11,8 @@ from keras.optimizers import Adam
 
 EPISODES = 1000
 
-TRAINING = False
-PLAYING = True
+TRAINING = True
+PLAYING = False
 
 DQNScoreList = []
 LSTMScoreList = []
@@ -51,14 +51,17 @@ class DQNAgent:
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
 
-    def act(self, state):
-        #if np.random.rand() <= self.epsilon:
-        #    return random.randrange(self.action_size)
-        act_values = self.model.predict(state)
+    def act(self, state, prevObs = None, prevAction = None):
+        if np.random.rand() <= self.epsilon:
+            return random.randrange(self.action_size)
+        states = [prevObs, state]
+        act_values = self.model.predict(states)
         return np.argmax(act_values[0])  # returns action
 
     def replay(self, batch_size):
         minibatch = random.sample(self.memory, batch_size)
+        prev_state = null
+        prev_targ = null
         for state, action, reward, next_state, done in minibatch:
             target = reward
             if not done:
@@ -66,7 +69,12 @@ class DQNAgent:
                           np.amax(self.model.predict(next_state)[0]))
             target_f = self.model.predict(state)
             target_f[0][action] = target
-            self.model.fit(state, target_f, epochs=1, verbose=0)
+            if prev_targ != null:
+                states = [prev_state, state]
+                targets = [prev_targ, target_f]
+                self.model.fit(states, targets, epochs=1, verbose=0)
+            prev_state = state
+            prev_targ = target_f
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
 
@@ -104,15 +112,18 @@ class LSTMAgent:
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
 
-    def act(self, state):
-        #if np.random.rand() <= self.epsilon:
-        #    return random.randrange(self.action_size)
+    def act(self, state, prevObs = None, prevAction = None):
+        if np.random.rand() <= self.epsilon:
+            return random.randrange(self.action_size)
         state = np.expand_dims(state, axis=2)
-        act_values = self.model.predict(state)
+        states = [prevObs, state]
+        act_values = self.model.predict(states)
         return np.argmax(act_values[0])  # returns action
 
     def replay(self, batch_size):
         minibatch = random.sample(self.memory, batch_size)
+        prev_state = None
+        prev_targ = None
         for state, action, reward, next_state, done in minibatch:
             target = reward
             next_state = np.expand_dims(next_state, axis=2)
@@ -122,7 +133,12 @@ class LSTMAgent:
                           np.amax(self.model.predict(next_state)[0]))
             target_f = self.model.predict(state)
             target_f[0][action] = target
-            self.model.fit(state, target_f, epochs=1, verbose=0)
+            if prev_targ != None:
+                states = [prev_state, state]
+                targets = [prev_targ, target_f]
+                self.model.fit(states, targets, epochs=1, verbose=0)
+            prev_state = state
+            prev_targ = target_f
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
 
@@ -146,62 +162,63 @@ if __name__ == "__main__":
         done = False
         batch_size = 32
 
-        for e in range(EPISODES):
-            state = env.reset()
-            state = np.reshape(state, [1, state_size])
-            for time in range(500):
-                #env.render()
-                action = agent.act(state)
-                next_state, reward, done, _ = env.step(action)
-                reward = reward if not done else -10
-                next_state = np.reshape(next_state, [1, state_size])
-                agent.remember(state, action, reward, next_state, done)
-                state = next_state
-                if done:
-                    DQNTrainingScore = time + DQNTrainingScore
-                    DQNTrainingList.append(DQNTrainingScore / (e+1))
-                    print(DQNTrainingScore / (e+1), e)
-                    print("episode: {}/{}, score: {}, e: {:.2}"
-                          .format(e, EPISODES, time, agent.epsilon))
-                    break
-            if len(agent.memory) > batch_size:
-                agent.replay(batch_size)
-            #if e % 10 == 0:
-            if e == 999:
-                agent.save("cartpole-dqn.h5")
-
         # for e in range(EPISODES):
         #     state = env.reset()
         #     state = np.reshape(state, [1, state_size])
         #     for time in range(500):
-        #         # env.render()
-        #         action = agent1.act(state)
+        #         #env.render()
+        #         action = agent.act(state)
         #         next_state, reward, done, _ = env.step(action)
-        #         # print(reward)
         #         reward = reward if not done else -10
-        #         # print(reward)
         #         next_state = np.reshape(next_state, [1, state_size])
-        #         # if time > 50:
-        #         #    agent.remember(state, action, reward, next_state, done)
-        #         agent1.remember(state, action, reward, next_state, done)
+        #         agent.remember(state, action, reward, next_state, done)
         #         state = next_state
         #         if done:
-        #             LSTMTrainingScore = time + LSTMTrainingScore
-        #             LSTMTrainingList.append(LSTMTrainingScore / (e + 1))
-        #             print(LSTMTrainingScore / (e + 1), e)
+        #             DQNTrainingScore = time + DQNTrainingScore
+        #             DQNTrainingList.append(DQNTrainingScore / (e+1))
+        #             print(DQNTrainingScore / (e+1), e)
         #             print("episode: {}/{}, score: {}, e: {:.2}"
         #                   .format(e, EPISODES, time, agent.epsilon))
         #             break
-        #     if len(agent1.memory) > batch_size:
-        #         agent1.replay(batch_size)
-        #     # if e % 10 == 0:
-        #     if e == 999:
-        #         agent1.save("cartpole-lstm.h5")
-        # fig = plt.figure()
-        # plt.plot(DQNTrainingList, color='red')
-        # plt.plot(LSTMTrainingList, color='blue')
-        # plt.savefig('Training2.png')
-        # plt.show()
+        #     if len(agent.memory) > batch_size:
+        #         agent.replay(batch_size)
+        #     #if e % 10 == 0:
+        # #     if e == 999:
+        # #         agent.save("cartpole-dqn.h5")
+
+        for e in range(EPISODES):
+            state = env.reset()
+            state = np.reshape(state, [1, state_size])
+            previous_state = state
+            action = agent1.act(state)
+            previous_action = action
+            action = agent1.act(state)
+            for time in range(500):
+                # env.render()
+                action = agent1.act(state, previous_state, previous_action)
+                next_state, reward, done, _ = env.step(action)
+                # print(reward)
+                reward = reward if not done else -10
+                # print(reward)
+                next_state = np.reshape(next_state, [1, state_size])
+                # if time > 50:
+                #    agent.remember(state, action, reward, next_state, done)
+                agent1.remember(state, action, reward, next_state, done)
+                previous_state = state
+                previous_action = action
+                state = next_state
+                if done:
+                    DQNTrainingScore = time + DQNTrainingScore
+                    DQNTrainingList.append(DQNTrainingScore / (e + 1))
+                    print(DQNTrainingScore / (e + 1), e)
+                    print("episode: {}/{}, score: {}, e: {:.2}"
+                          .format(e, EPISODES, time, agent.epsilon))
+                    break
+            if len(agent1.memory) > batch_size:
+                agent1.replay(batch_size)
+            # if e % 10 == 0:
+            if e == 999:
+                agent1.save("cartpole-lstm.h5")
 
 
     if PLAYING:
@@ -227,7 +244,7 @@ if __name__ == "__main__":
                 state = next_state
                 if done:
                     DQNTotalScore = DQNTotalScore + time
-                    DQNScoreList.append(DQNTotalScore/(e+1))
+                    DQNScoreList.append(time)
                     print("episode: {}/{}, score: {}, e: {:.2}"
                           .format(e, 10000, time, agent.epsilon))
                     break
@@ -246,7 +263,7 @@ if __name__ == "__main__":
                  state = next_state
                  if done:
                      LSTMTotalScore = LSTMTotalScore + time
-                     LSTMScoreList.append(LSTMTotalScore/(e+1))
+                     LSTMScoreList.append(time)
                      print("episode: {}/{}, score: {}, e: {:.2}"
                            .format(e, 10000, time, agent.epsilon))
                      break
@@ -254,10 +271,9 @@ if __name__ == "__main__":
         DQNTotalScore = DQNTotalScore / 10000
         LSTMTotalScore = LSTMTotalScore / 10000
         print(DQNTotalScore, LSTMTotalScore)
-        fig = plt.figure()
-        plt.plot(DQNScoreList, color='red')
-        plt.plot(LSTMScoreList, color='blue')
-        plt.savefig('Tested.png')
-        plt.show()
 
-
+    fig = plt.figure()
+    plt.plot(DQNTrainingList, color='red')
+    plt.plot(LSTMTrainingList, color='blue')
+    plt.savefig('Training2.png')
+    plt.show()
